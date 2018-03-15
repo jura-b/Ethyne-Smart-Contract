@@ -7,8 +7,8 @@ contract EthyneEscrow{
   uint overrideFees;
 
   struct Escrow {
-    address seller;
-    address buyer;
+    address _seller;
+    address _buyer;
     bytes16 _tradeID;
     bool _isActive;
     uint _value;
@@ -24,6 +24,10 @@ contract EthyneEscrow{
 
   //events
   event LogCreated(
+    bytes32 _hashed
+    );
+
+  event logReleased(
     bytes32 _hashed
     );
 
@@ -65,16 +69,16 @@ contract EthyneEscrow{
     ) public {
       bytes32 _hashed = keccak256(_tradeID, msg.sender, _buyer, _value, _ethyneFees);
       require(escrows[_hashed]._isActive);
-      LogCreated(_hashed);
-
-      transferToBuyerWithFees(escrows[_hashed].buyer, escrows[_hashed]._value, escrows[_hashed]._ethyneFees);
+      escrows[_hashed]._isActive = false;
+      LogReleased(_hashed);
+      transferToBuyerWithFees(escrows[_hashed]._buyer, escrows[_hashed]._value, escrows[_hashed]._ethyneFees);
     }
 
   function transferToBuyerWithFees(address _to, uint256 _value, uint _fees) private returns (uint256){
       uint256 _finalFees = 0;
       if(!isOverrideFees){
         _finalFees = (_value * _fees/10000);
-        require(_value - _finalFees < _value);
+        require(_value - _finalFees < _value); // prevent the case that not the value not enough for fees.
       } else {
         _finalFees = overrideFees;
       }
@@ -91,7 +95,7 @@ contract EthyneEscrow{
   }
 
   // withdraw the revenue from trading to specific account
-  function getRevenue() onlyOwner returns(uint256) {
+  function getRevenue() onlyOwner view returns(uint256) {
     return ethyneRevenue;
   }
 
