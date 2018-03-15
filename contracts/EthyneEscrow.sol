@@ -2,9 +2,19 @@ pragma solidity ^0.4.18;
 
 contract EthyneEscrow{
   address owner;
-  uint256 revenue;
+  uint256 ethyneRevenue;
+  uint escrowCounter;
 
-  modifier onlyOwer(){
+  struct Escrow {
+    address seller;
+    address buyer;
+    bytes16 _tradeID;
+    uint _value;
+  }
+
+  mapping (uint => Escrow) escrows;
+
+  modifier onlyOwner(){
     require(msg.sender == owner);
     _;
   }
@@ -18,12 +28,17 @@ contract EthyneEscrow{
   function createEscrow(
     bytes16 _tradeID,
     address _buyer,
-    uint256 _value,
-    uint32 _expireTime
-    ) public{
-      require(msg.sender > 0 && msg.sender == _value);
-      require(block.timestamp < _expireTime);
-      
+    uint256 _value
+    ) payable public {
+      require(msg.value > 0 && msg.value == _value);
+
+      escrowCounter++;
+      escrows[escrowCounter] = Escrow(
+        msg.sender,
+        _buyer,
+        _tradeID,
+        _value
+      );
   }
 
   // the function below this line will be related to the company
@@ -35,9 +50,9 @@ contract EthyneEscrow{
   }
 
   // withdraw the revenue from trading to specific account
-  function withdrawRevenue(address _to, uint256 _amount) {
-    require(_amount < revenue);
-    revenue = revenue - _amount;
+  function withdrawRevenue(address _to, uint256 _amount) onlyOwner public {
+    require(_amount < ethyneRevenue);
+    ethyneRevenue = ethyneRevenue - _amount;
     _to.transfer(_amount);
   }
 
