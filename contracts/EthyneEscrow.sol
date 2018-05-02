@@ -1,10 +1,15 @@
 pragma solidity ^0.4.18;
 
 contract EthyneEscrow{
-  address owner;
-  uint256 ethyneRevenue;
-  bool isOverrideFees;
-  uint overrideFees;
+  address public owner;
+  address public relayer;
+  uint256 public ethyneCollectedFees;
+  bool public  isOverrideFees;
+  uint public overrideFees;
+
+  uint constant ETHYNE_FEES = 10;
+  uint8 constant STAGE_SELLER_CREATE_ESCROW = 0x01;
+  uint8 constant STAGE_BUYER_CONFIRM_TX = 0x02;
 
   struct Escrow {
     address _seller;
@@ -12,7 +17,7 @@ contract EthyneEscrow{
     bytes16 _tradeID;
     bool _isActive;
     uint _value;
-    uint16 _ethyneFees;
+    uint8 _stage;
   }
 
   mapping (bytes32 => Escrow) public escrows;
@@ -27,12 +32,7 @@ contract EthyneEscrow{
     bytes32 _hashed
     );
 
-  event logReleased(
-    bytes32 _hashed
-    );
-
   // constructor for escrow
-  // setup the owner of the contract
   function EthyneEscrow() public{
     owner = msg.sender;
     overrideFees = 0;
@@ -42,10 +42,11 @@ contract EthyneEscrow{
   function createEscrow(
     bytes16 _tradeID,
     address _buyer,
-    uint256 _value,
-    uint16 _ethyneFees
+    uint256 _value
     ) payable public {
-      bytes32 _hashed = keccak256(_tradeID, msg.sender, _buyer, _value, _ethyneFees);
+      address _seller = msg.sender;
+      bytes32 _hashed = keccak256(_tradeID, _seller, _buyer, _value);
+      require(msg.sender == _seller);
       require(!escrows[_hashed]._isActive);
       require(msg.value > 0 && msg.value == _value);
 
@@ -55,7 +56,7 @@ contract EthyneEscrow{
         _tradeID,
         true,
         _value,
-        _ethyneFees
+        STAGE_SELLER_CREATE_ESCROW
       );
 
       LogCreated(_hashed);
@@ -64,29 +65,111 @@ contract EthyneEscrow{
   function release(
     bytes16 _tradeID,
     address _buyer,
-    uint256 _value,
-    uint16 _ethyneFees
+    uint256 _value
     ) public {
-      bytes32 _hashed = keccak256(_tradeID, msg.sender, _buyer, _value, _ethyneFees);
+      bytes32 _hashed = keccak256(_tradeID, msg.sender, _buyer, _value);
       require(escrows[_hashed]._isActive);
+      transferToBuyerWithFees(escrows[_hashed]._buyer, escrows[_hashed]._value, ETHYNE_FEES);
       escrows[_hashed]._isActive = false;
-      LogReleased(_hashed);
-      transferToBuyerWithFees(escrows[_hashed]._buyer, escrows[_hashed]._value, escrows[_hashed]._ethyneFees);
+      delete escrows[_hashed];
     }
+
+  /* Seller cancelled the trade.
+  ** Condition:
+  ** Buyer must not confirm the transactino on ethyne.network yet.
+  ** 1) If seller willing to cancel BEFORE buyer confirm tx, then let him cancel.
+  ** 2) If seller willing to cancel AFTER buyer confirm tx, then relay is needed.
+  ** Aftermath:
+  ** 1) The trade must be cancelled and remove the trade out of array.
+  ** 2) If the function called by relayer, the trade must be removed.
+  */
+  function sellerCancelTrade(
+    bytes16 _tradeID,
+    address _seller,
+    address _buyer,
+    uint256 _value
+    ) public {
+      bytes32 _hashed = keccak256(_tradeID, _seller, _buyer, _value);
+      require(escrows[_hashed]._isActive);
+      if(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW) {
+        require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
+        require(escrows[_hashed]._seller == msg.sender)
+        escrows[_hashed]._isActive = false;
+        delete escrows[_hashed];
+      } else {
+        require(escrows[_hashed]._stage == STAGE_BUYER_CONFIRM_TX);
+        require(msg.sender == relayer);
+        escrows[_hashed]._isActive = false;
+        delete escrows[_hashed];
+      }
+
+      //TODO:= transfer ETH back to seller
+
+  }
+
+  /* Confirm that buyer already transfer fiat to the seller.
+  ** Condition:
+  ** The trade must be at the STAGE_SELLER_CREATE_ESCROW only.
+  ** Only buyer can confirm the transaction.
+  ** Aftermath:
+  ** The stage of the trade must be updated.
+  */
+  function buyerConfirmTx(
+    bytes16 _tradeID,
+    address _buyer,
+    uint256 _value
+    ) public {
+      bytes32 _hashed = keccak256(_tradeID, msg.sender, _buyer, _value);
+      require(escrows[_hashed]._isActive);
+      require(escrows[_hashed]._buyer == msg.sender);
+      require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
+      escrows[_hashed]._stage = STAGE_BUYER_CONFIRM_TX;
+  }
+
+  /* Buyer cancel the trade.
+  ** Condition:
+  ** The trade must be at the STAGE_SELLER_CREATE_ESCROW only.
+  ** Only buyer can called this function
+  ** Aftermath:
+  ** Return ETH back to seller.
+  ** Remove the trade out of array.
+  */
+  function buyerCancelTrade(
+    bytes16 _tradeID,
+    address _seller,
+    address _buyer,
+    uint256 _value
+    ) public {
+      bytes32 _hashed = keccak256(_tradeID, _seller, _buyer, _value);
+      require(escrows[_hashed]._isActive);
+      if(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW) {
+        require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
+        require(escrows[_hashed]._buyer = msg.sender)
+        escrows[_hashed]._isActive = false;
+        delete escrows[_hashed];
+      } else {
+        require(escrows[_hashed]._stage == STAGE_BUYER_CONFIRM_TX);
+        require(msg.sender == relayer);
+        escrows[_hashed]._isActive = false;
+        delete escrows[_hashed];
+      }
+      //TODO:= transfer ETH back to seller
+
+  }
 
   function transferToBuyerWithFees(address _to, uint256 _value, uint _fees) private returns (uint256){
       uint256 _finalFees = 0;
       if(!isOverrideFees){
         _finalFees = (_value * _fees/10000);
-        require(_value - _finalFees < _value); // prevent the case that not the value not enough for fees.
+        require(_value - _finalFees < _value); // prevent overflow/underflow
       } else {
         _finalFees = overrideFees;
       }
-      ethyneRevenue = _finalFees + ethyneRevenue;
+      ethyneCollectedFees = _finalFees + ethyneCollectedFees;
       _to.transfer(_value - _finalFees);
   }
 
-  // the function below this line will be related to the company
+  // :=== the function below this line will be related to the company ===:
 
   function setOwner(address _newOwner) onlyOwner external {
     //Change the owner of the contract
@@ -95,18 +178,20 @@ contract EthyneEscrow{
   }
 
   // withdraw the revenue from trading to specific account
-  function getRevenue() onlyOwner view returns(uint256) {
-    return ethyneRevenue;
+  function getRevenue() onlyOwner view returns(uint256) external {
+    return ethyneCollectedFees;
   }
 
-  function withdrawRevenue(address _to, uint256 _amount) onlyOwner {
-    require(_amount < ethyneRevenue);
-    ethyneRevenue = ethyneRevenue - _amount;
+  function withdrawRevenue(address _to, uint256 _amount) onlyOwner external {
+    require(_amount < ethyneCollectedFees);
+    ethyneCollectedFees = ethyneCollectedFees - _amount;
     _to.transfer(_amount);
   }
 
   // Change the overrideFees when we have a promo/or in beta test
-  function setOverrideFees(uint16 _newOverrideFees) onlyOwner {
+  // override fees will not be ever over ETHYNE_FEES
+  function setOverrideFees(uint16 _newOverrideFees) onlyOwner external {
+    require(ETHYNE_FEES > _newOverrideFees);
     overrideFees = _newOverrideFees;
   }
 
