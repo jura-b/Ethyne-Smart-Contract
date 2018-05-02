@@ -1,6 +1,41 @@
 pragma solidity ^0.4.18;
+/**
+ * @title SafeMath
+ * @dev Math operations with safety checks that throw on error
+ */
+library SafeMath {
+  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a == 0) {
+      return 0;
+    }
+    uint256 c = a * b;
+    assert(c / a == b);
+    return c;
+  }
+
+  function div(uint256 a, uint256 b) internal pure returns (uint256) {
+    // assert(b > 0); // Solidity automatically throws when dividing by 0
+    uint256 c = a / b;
+    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+    return c;
+  }
+
+  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+    assert(b <= a);
+    return a - b;
+  }
+
+  function add(uint256 a, uint256 b) internal pure returns (uint256) {
+    uint256 c = a + b;
+    assert(c >= a);
+    return c;
+  }
+}
 
 contract EthyneEscrow{
+  using SafeMath for uint;
+  using SafeMath for uint256;
+  
   address public owner;
   address public relayer;
   uint256 public ethyneCollectedFees;
@@ -157,13 +192,13 @@ contract EthyneEscrow{
   function transferWithFees(address _to, uint256 _value, uint _fees) private {
       uint256 _finalFees = 0;
       if(!isOverrideFees){
-        _finalFees = (_value * _fees/10000);
-        require(_value - _finalFees < _value); // prevent overflow/underflow
+        _finalFees = _value.mul(_fees).div(10000);
+        require(_value.sub(_finalFees) < _value); // prevent overflow/underflow
       } else {
         _finalFees = overrideFees;
       }
-      ethyneCollectedFees = _finalFees + ethyneCollectedFees;
-      _to.transfer(_value - _finalFees);
+      ethyneCollectedFees = _finalFees.add(ethyneCollectedFees);
+      _to.transfer(_value.sub(_finalFees));
   }
 
   // :=== the functions below this line will be related to the company ===:
@@ -181,7 +216,7 @@ contract EthyneEscrow{
 
   function withdrawRevenue(address _to, uint256 _amount) onlyOwner external {
     require(_amount < ethyneCollectedFees);
-    ethyneCollectedFees = ethyneCollectedFees - _amount;
+    ethyneCollectedFees = ethyneCollectedFees.sub(_amount);
     _to.transfer(_amount);
   }
 
