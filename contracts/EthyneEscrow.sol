@@ -69,7 +69,7 @@ contract EthyneEscrow{
     ) public {
       bytes32 _hashed = keccak256(_tradeID, msg.sender, _buyer, _value);
       require(escrows[_hashed]._isActive);
-      transferToBuyerWithFees(escrows[_hashed]._buyer, escrows[_hashed]._value, ETHYNE_FEES);
+      transferWithFees(escrows[_hashed]._buyer, escrows[_hashed]._value, ETHYNE_FEES);
       escrows[_hashed]._isActive = false;
       delete escrows[_hashed];
     }
@@ -93,7 +93,7 @@ contract EthyneEscrow{
       require(escrows[_hashed]._isActive);
       if(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW) {
         require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
-        require(escrows[_hashed]._seller == msg.sender)
+        require(escrows[_hashed]._seller == msg.sender);
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
       } else {
@@ -102,9 +102,7 @@ contract EthyneEscrow{
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
       }
-
-      //TODO:= transfer ETH back to seller
-
+      transferWithFees(_seller, _value, ETHYNE_FEES);
   }
 
   /* Confirm that buyer already transfer fiat to the seller.
@@ -144,7 +142,7 @@ contract EthyneEscrow{
       require(escrows[_hashed]._isActive);
       if(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW) {
         require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
-        require(escrows[_hashed]._buyer = msg.sender)
+        require(escrows[_hashed]._buyer == msg.sender);
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
       } else {
@@ -153,11 +151,10 @@ contract EthyneEscrow{
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
       }
-      //TODO:= transfer ETH back to seller
-
+      transferWithFees(_seller, _value, ETHYNE_FEES);
   }
 
-  function transferToBuyerWithFees(address _to, uint256 _value, uint _fees) private returns (uint256){
+  function transferWithFees(address _to, uint256 _value, uint _fees) private {
       uint256 _finalFees = 0;
       if(!isOverrideFees){
         _finalFees = (_value * _fees/10000);
@@ -169,7 +166,7 @@ contract EthyneEscrow{
       _to.transfer(_value - _finalFees);
   }
 
-  // :=== the function below this line will be related to the company ===:
+  // :=== the functions below this line will be related to the company ===:
 
   function setOwner(address _newOwner) onlyOwner external {
     //Change the owner of the contract
@@ -178,7 +175,7 @@ contract EthyneEscrow{
   }
 
   // withdraw the revenue from trading to specific account
-  function getRevenue() onlyOwner view returns(uint256) external {
+  function getRevenue() onlyOwner view external returns(uint256) {
     return ethyneCollectedFees;
   }
 
