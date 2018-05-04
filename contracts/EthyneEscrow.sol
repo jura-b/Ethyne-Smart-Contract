@@ -1,4 +1,5 @@
 pragma solidity ^0.4.18;
+
 /**
  * @title SafeMath
  * @dev Math operations with safety checks that throw on error
@@ -35,7 +36,7 @@ library SafeMath {
 contract EthyneEscrow{
   using SafeMath for uint;
   using SafeMath for uint256;
-  
+
   address public owner;
   address public relayer;
   uint256 public ethyneCollectedFees;
@@ -52,7 +53,6 @@ contract EthyneEscrow{
     bytes16 _tradeID;
     bool _isActive;
     uint _value;
-    uint8 _stage;
   }
 
   mapping (bytes32 => Escrow) public escrows;
@@ -90,8 +90,7 @@ contract EthyneEscrow{
         _buyer,
         _tradeID,
         true,
-        _value,
-        STAGE_SELLER_CREATE_ESCROW
+        _value
       );
 
       LogCreated(_hashed);
@@ -122,41 +121,23 @@ contract EthyneEscrow{
     bytes16 _tradeID,
     address _seller,
     address _buyer,
-    uint256 _value
+    uint256 _value,
+    uint8 _stage
     ) public {
       bytes32 _hashed = keccak256(_tradeID, _seller, _buyer, _value);
       require(escrows[_hashed]._isActive);
-      if(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW) {
-        require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
+      if(_stage == STAGE_SELLER_CREATE_ESCROW) {
+        require(_stage == STAGE_SELLER_CREATE_ESCROW);
         require(escrows[_hashed]._seller == msg.sender);
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
       } else {
-        require(escrows[_hashed]._stage == STAGE_BUYER_CONFIRM_TX);
+        require(_stage == STAGE_BUYER_CONFIRM_TX);
         require(msg.sender == relayer);
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
       }
       transferWithFees(_seller, _value, ETHYNE_FEES);
-  }
-
-  /* Confirm that buyer already transfer fiat to the seller.
-  ** Condition:
-  ** The trade must be at the STAGE_SELLER_CREATE_ESCROW only.
-  ** Only buyer can confirm the transaction.
-  ** Aftermath:
-  ** The stage of the trade must be updated.
-  */
-  function buyerConfirmTx(
-    bytes16 _tradeID,
-    address _buyer,
-    uint256 _value
-    ) public {
-      bytes32 _hashed = keccak256(_tradeID, msg.sender, _buyer, _value);
-      require(escrows[_hashed]._isActive);
-      require(escrows[_hashed]._buyer == msg.sender);
-      require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
-      escrows[_hashed]._stage = STAGE_BUYER_CONFIRM_TX;
   }
 
   /* Buyer cancel the trade.
@@ -171,17 +152,18 @@ contract EthyneEscrow{
     bytes16 _tradeID,
     address _seller,
     address _buyer,
-    uint256 _value
+    uint256 _value,
+    uint8 _stage
     ) public {
       bytes32 _hashed = keccak256(_tradeID, _seller, _buyer, _value);
       require(escrows[_hashed]._isActive);
-      if(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW) {
-        require(escrows[_hashed]._stage == STAGE_SELLER_CREATE_ESCROW);
+      if(_stage == STAGE_SELLER_CREATE_ESCROW) {
+        require(_stage == STAGE_SELLER_CREATE_ESCROW);
         require(escrows[_hashed]._buyer == msg.sender);
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
       } else {
-        require(escrows[_hashed]._stage == STAGE_BUYER_CONFIRM_TX);
+        require(_stage == STAGE_BUYER_CONFIRM_TX);
         require(msg.sender == relayer);
         escrows[_hashed]._isActive = false;
         delete escrows[_hashed];
